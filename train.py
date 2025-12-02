@@ -8,6 +8,7 @@ from data import loadData, TokenData
 from models import BERTWrapper
 from modules import InfoNCE # Assuming InfoNCE is correctly implemented in modules.py
 
+DataSize = 1000
 
 def train_model(
     model: nn.Module, 
@@ -63,7 +64,7 @@ def main():
 
     # --- Data Loading ---
     print("Loading data...")
-    data_pairs, paper_ids = loadData(1000)
+    data_pairs, paper_ids = loadData(DataSize)
     
     # A simple split for demonstration; in production, use dedicated train/val/test splits
     # Since the full dataset is small, we'll use a subset to quickly verify the training loop
