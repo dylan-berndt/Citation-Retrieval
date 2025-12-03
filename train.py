@@ -62,6 +62,8 @@ def train_model(
 
         model.eval()
         test_abstract_tokens, test_citation_tokens = next(test_iterator)
+        test_abstract_tokens = {k: v.to(device) for k, v in test_abstract_tokens.items()}
+        test_citation_tokens = {k: v.to(device) for k, v in test_citation_tokens.items()}
         y1 = model(test_abstract_tokens)
         y2 = model(test_citation_tokens)
         test_loss = criterion(y1, y2)
@@ -112,7 +114,7 @@ def main():
     test_dataset = TokenData(test_data, paper_ids[split_idx:])
     test_dataloader = DataLoader(
         test_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=BATCH_SIZE // 4,
         shuffle=True,
         collate_fn=TokenData.collate
     )
@@ -121,7 +123,7 @@ def main():
     # query_encoder = BERTWrapper().to(device) # Your BERT model wrapper
     # text_encoder = BERTWrapper().to(device)
 
-    model = Transformer(8, 384, heads=12).to(device)
+    model = Transformer(8, 256, heads=8).to(device)
     
     # --- Loss and Optimizer Setup ---
     # InfoNCE is typically used for contrastive learning in retrieval tasks
