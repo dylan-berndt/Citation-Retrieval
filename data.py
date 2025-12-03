@@ -15,7 +15,7 @@ import kagglehub
 
 # Function for loading data from kagglehub
 # Should return the plain text from each as well as an ID list lining up with the plain text
-def loadData(max_data_size: int | None = None) -> Tuple[List[Tuple[str, str]], List[int]]:
+def loadData(max_data_size=None, subjects=None) -> Tuple[List[Tuple[str, str]], List[int]]:
     """
     Downloads the citation network dataset from KaggleHub, processes the JSON incrementally,
     and returns a list of (abstract, citation_title) pairs and corresponding paper IDs.
@@ -25,6 +25,7 @@ def loadData(max_data_size: int | None = None) -> Tuple[List[Tuple[str, str]], L
     Args:
         max_data_size (int | None): If set to an integer, limits the total number of 
                                     (abstract, citation) pairs generated to this size.
+        subjects (List[str]): Subjects to limit the results to
 
     Returns:
         tuple[list[tuple[str, str]], list[int]]: 
@@ -59,93 +60,114 @@ def loadData(max_data_size: int | None = None) -> Tuple[List[Tuple[str, str]], L
     # Debug flag to print the structure of the first failed indexed_abstract
     # debug_printed = False # Removed debugging flag
 
+    if subjects is None:
+        subjects = [""]
+
     with open(json_path, 'rb') as f: # Use 'rb' mode for ijson
         papers_stream = ijson.items(f, 'item')
-        
-        for raw_paper in papers_stream:
+
+        for i, raw_paper in enumerate(papers_stream):
             paper_id = raw_paper.get('id')
-            if paper_id is not None:
-                # --- Robust Abstract Extraction Logic ---
-                abstract = ""
-                
-                # 1. Try to get abstract from the top-level 'abstract' field (simple string)
-                if isinstance(raw_paper.get('abstract'), str):
-                    abstract = raw_paper['abstract']
-                
-                # 2. If not found, check the 'indexed_abstract' structure
-                elif 'indexed_abstract' in raw_paper:
-                    indexed_abstract = raw_paper['indexed_abstract']
-                    temp_abstract = ""
-                    
-                    # Case 2a: Abstract text is a list of words/tokens under 'abstract'
-                    abstract_tokens = indexed_abstract.get('abstract')
-                    if isinstance(abstract_tokens, list) and abstract_tokens:
-                        temp_abstract = " ".join(abstract_tokens)
-                        
-                    # Case 2b: Abstract is stored as an inverted index (word -> [positions])
-                    # This handles the structure identified in your debug output.
-                    inverted_index = indexed_abstract.get('InvertedIndex')
-                    index_length = indexed_abstract.get('IndexLength')
-                    
-                    if not temp_abstract and isinstance(inverted_index, dict) and isinstance(index_length, int) and index_length > 0:
-                        reconstructed_tokens = [""] * index_length
-                        all_indices_found = True
-                        
-                        for word, indices in inverted_index.items():
-                            if isinstance(indices, list):
-                                for index in indices:
-                                    if 0 <= index < index_length:
-                                        reconstructed_tokens[index] = word
-                                    else:
-                                        # Index out of bounds, data might be messy. Flag and break.
-                                        all_indices_found = False
-                                        break
-                            if not all_indices_found:
-                                break
+            if paper_id is None:
+                continue
 
-                        # Check if every position was filled, otherwise the abstract is incomplete/corrupt
-                        # Note: We rely on the InvertedIndex being complete to reconstruct the abstract.
-                        if all_indices_found and all(token for token in reconstructed_tokens):
-                            temp_abstract = " ".join(reconstructed_tokens)
-                            
-                    # Case 2c (Original 2b): Abstract is stored as a dictionary of indexed segments, often under 'index'
-                    # The values of the dictionary are lists of tokens, keyed by position string ("0", "1", etc.)
-                    elif not temp_abstract and isinstance(indexed_abstract, dict) and 'index' in indexed_abstract and isinstance(indexed_abstract['index'], dict):
-                        token_dict = indexed_abstract['index']
-                        tokens = []
-                        
-                        try:
-                            # Attempt to sort by integer key (for "0", "1", "2", ...)
-                            # Fall back to string sort if integer conversion fails for a key.
-                            sorted_keys = sorted(token_dict.keys(), key=lambda x: int(x) if x.isdigit() else x)
-                        except:
-                            # If numerical sorting fails due to inconsistent keys, fall back to string sort
-                            sorted_keys = sorted(token_dict.keys())
+            if subjects[0] != "":
+                if raw_paper.get("fos") is None:
+                    continue
+                paper_subjects = [subject["name"] for subject in raw_paper.get("fos")]
+                intersection = set(subjects).intersection(paper_subjects)
+                if len(intersection) != len(subjects):
+                    print(f"\r{i} papers loaded, {len(paper_map)} usable", end="")
+                    continue
 
-                        for key in sorted_keys:
-                            if isinstance(token_dict.get(key), list):
-                                tokens.extend(token_dict[key])
-                            
-                        if tokens:
-                            temp_abstract = " ".join(tokens)
-                            
-                    # Case 2d (Original 2c - Fallback): Look for the first list of strings with significant length
-                    if not temp_abstract and isinstance(indexed_abstract, dict):
-                        for value in indexed_abstract.values():
-                            if isinstance(value, list) and all(isinstance(t, str) for t in value) and len(value) > 10:
-                                # Found a substantial list of strings, assume it's the abstract tokens
-                                temp_abstract = " ".join(value)
-                                break
-                    
-                    abstract = temp_abstract
-                    
-                # Ensure abstract is not just empty or whitespace
-                if abstract and abstract.strip():
-                    paper_map[paper_id] = {
-                        'title': raw_paper.get('title', ''),
-                        'references': raw_paper.get('references', []),
-                        'abstract': abstract # Store the extracted abstract string
-                    }
+            # --- Robust Abstract Extraction Logic ---
+            abstract = ""
+
+            # 1. Try to get abstract from the top-level 'abstract' field (simple string)
+            if isinstance(raw_paper.get('abstract'), str):
+                abstract = raw_paper['abstract']
+
+            # 2. If not found, check the 'indexed_abstract' structure
+            elif 'indexed_abstract' in raw_paper:
+                indexed_abstract = raw_paper['indexed_abstract']
+                temp_abstract = ""
+
+                # Case 2a: Abstract text is a list of words/tokens under 'abstract'
+                abstract_tokens = indexed_abstract.get('abstract')
+                if isinstance(abstract_tokens, list) and abstract_tokens:
+                    temp_abstract = " ".join(abstract_tokens)
+
+                # Case 2b: Abstract is stored as an inverted index (word -> [positions])
+                # This handles the structure identified in your debug output.
+                inverted_index = indexed_abstract.get('InvertedIndex')
+                index_length = indexed_abstract.get('IndexLength')
+
+                if not temp_abstract and isinstance(inverted_index, dict) and isinstance(index_length, int) and index_length > 0:
+                    reconstructed_tokens = [""] * index_length
+                    all_indices_found = True
+
+                    for word, indices in inverted_index.items():
+                        if isinstance(indices, list):
+                            for index in indices:
+                                if 0 <= index < index_length:
+                                    reconstructed_tokens[index] = word
+                                else:
+                                    # Index out of bounds, data might be messy. Flag and break.
+                                    all_indices_found = False
+                                    break
+                        if not all_indices_found:
+                            break
+
+                    # Check if every position was filled, otherwise the abstract is incomplete/corrupt
+                    # Note: We rely on the InvertedIndex being complete to reconstruct the abstract.
+                    if all_indices_found and all(token for token in reconstructed_tokens):
+                        temp_abstract = " ".join(reconstructed_tokens)
+
+                # Case 2c (Original 2b): Abstract is stored as a dictionary of indexed segments, often under 'index'
+                # The values of the dictionary are lists of tokens, keyed by position string ("0", "1", etc.)
+                elif not temp_abstract and isinstance(indexed_abstract, dict) and 'index' in indexed_abstract and isinstance(indexed_abstract['index'], dict):
+                    token_dict = indexed_abstract['index']
+                    tokens = []
+
+                    try:
+                        # Attempt to sort by integer key (for "0", "1", "2", ...)
+                        # Fall back to string sort if integer conversion fails for a key.
+                        sorted_keys = sorted(token_dict.keys(), key=lambda x: int(x) if x.isdigit() else x)
+                    except:
+                        # If numerical sorting fails due to inconsistent keys, fall back to string sort
+                        sorted_keys = sorted(token_dict.keys())
+
+                    for key in sorted_keys:
+                        if isinstance(token_dict.get(key), list):
+                            tokens.extend(token_dict[key])
+
+                    if tokens:
+                        temp_abstract = " ".join(tokens)
+
+                # Case 2d (Original 2c - Fallback): Look for the first list of strings with significant length
+                if not temp_abstract and isinstance(indexed_abstract, dict):
+                    for value in indexed_abstract.values():
+                        if isinstance(value, list) and all(isinstance(t, str) for t in value) and len(value) > 10:
+                            # Found a substantial list of strings, assume it's the abstract tokens
+                            temp_abstract = " ".join(value)
+                            break
+
+                abstract = temp_abstract
+
+            # Ensure abstract is not just empty or whitespace
+            if abstract and abstract.strip():
+                paper_map[paper_id] = {
+                    'title': raw_paper.get('title', ''),
+                    'references': raw_paper.get('references', []),
+                    'abstract': abstract # Store the extracted abstract string
+                }
+
+            print(f"\r{i} papers loaded, {len(paper_map)} usable", end="")
+
+            if max_data_size is not None and len(paper_map) > max_data_size:
+                break
+
+        print()
     
     print(f"First pass complete. Total unique papers with abstract and ID mapped: {len(paper_map)}")
     
@@ -201,32 +223,32 @@ class TokenData(Dataset):
 
     def __init__(self, data: list[tuple[str, str]], ids: list[int]):
         # ids is not strictly needed for TokenData but kept for compatibility with BIM/BM25
-        self.data = np.array(data)
+        self.data = data
 
     def __len__(self):
-        return self.data.shape[0]
+        return len(self.data)
     
     def __getitem__(self, i):
         return {"abstract": self.data[i][0], "citation": self.data[i][1]}
 
     @staticmethod
     def collate(samples):
-        abstracts = [sample["abstract"] for sample in samples]
-        citations = [sample["citation"] for sample in samples]
+        abstracts = [sample["abstract"].lower() for sample in samples]
+        citations = [sample["citation"].lower() for sample in samples]
 
         # Tokenize both abstracts (queries) and citations (documents)
         abstracts = TokenData.tokenizer(
             abstracts, 
-            padding="max_length", 
+            padding="longest",
             truncation=True, # Added truncation for safety
-            max_length=512,  # Standard BERT max length
+            max_length=256,  # Standard BERT max length
             return_tensors="pt"
         )
         citations = TokenData.tokenizer(
             citations, 
-            padding="max_length", 
+            padding="longest",
             truncation=True, # Added truncation for safety
-            max_length=512,  # Standard BERT max length
+            max_length=256,  # Standard BERT max length
             return_tensors="pt"
         )
 

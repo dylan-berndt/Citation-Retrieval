@@ -6,7 +6,9 @@ import numpy as np
 from nltk.stem import PorterStemmer
 import string
 
-from transformers import BertModel
+from transformers import BertModel, BertConfig
+
+from data import TokenData
 
 
 class BERTWrapper(nn.Module):
@@ -16,7 +18,39 @@ class BERTWrapper(nn.Module):
         self.model = BertModel.from_pretrained("bert-base-uncased")
 
     def forward(self, x):
-        return self.model(x).pooler_output
+        return self.model(**x).pooler_output
+
+
+class Transformer(nn.Module):
+    def __init__(self, layers, embed, heads=8):
+        super().__init__()
+
+        vocab = BertConfig.from_pretrained("bert-base-uncased").vocab_size
+
+        self.classToken = nn.Parameter(torch.zeros(1, 1, embed))
+        self.position = nn.Parameter(torch.zeros(1, 512, embed))
+
+        nn.init.normal_(self.classToken, mean=0, std=0.02)
+        nn.init.normal_(self.position, mean=0, std=0.02)
+
+        self.embeddings = nn.Embedding(vocab, embed)
+
+        self.encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=embed, dim_feedforward=embed * 4,
+                nhead=heads, batch_first=True
+            ),
+            num_layers=layers
+        )
+
+    def forward(self, x):
+        x = x["input_ids"]
+        mask = (x == TokenData.tokenizer.pad_token_id)
+        sequence = self.embeddings(x) + self.position[:, :x.shape[1]]
+        # sequence = torch.cat([self.classToken.expand(x.shape[0], -1, -1), sequence], dim=1)
+        outputs = self.encoder(sequence, src_key_padding_mask=mask)
+        pooled = outputs[:, 0]
+        return pooled
 
 
 stemmer = PorterStemmer()

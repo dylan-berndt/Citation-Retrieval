@@ -7,7 +7,7 @@ class MAP(nn.Module):
         super().__init__()
         self.axis = axis
 
-    def forward(predRelevance, targetRelevance):
+    def forward(self, predRelevance, targetRelevance):
         pass
 
 
@@ -20,11 +20,14 @@ class InfoNCE(nn.Module):
         self.temperature = temperature
 
     def forward(self, y1, y2):
-        y1 = nn.functional.normalize(y1, axis=self.axis)
-        y2 = nn.functional.normalize(y2, axis=self.axis)
+        y1 = nn.functional.normalize(y1, dim=self.axis)
+        y2 = nn.functional.normalize(y2, dim=self.axis)
 
         logits = y1 @ y2.t()
 
-        labels = torch.arange(len(y1))
+        labels = torch.arange(len(y1)).to(y1.device)
 
-        return self.entropy(logits / self.temperature, labels)
+        l1 = self.entropy(logits / self.temperature, labels)
+        l2 = self.entropy(logits.t() / self.temperature, labels)
+
+        return (l1 + l2) / 2
