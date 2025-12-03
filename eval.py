@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 
 from data import loadData, TokenData
-from models import BERTWrapper
+from models import BERTWrapper, Transformer, BIM, BM25
 from modules import MAP # Assuming MAP is correctly implemented in modules.py
 
 
@@ -32,7 +32,20 @@ def get_embeddings(model: nn.Module, dataloader: DataLoader, device: torch.devic
     return np.concatenate(all_abstract_embeddings), np.concatenate(all_citation_embeddings)
 
 
-def calculate_map(embeddings_q, embeddings_d, paper_ids):
+def map_from_embeddings(embeddings_q, embeddings_d, paper_ids):
+    # 1. Calculate similarity scores (dot product) between all queries and all documents
+    # The result is a (N_queries x N_documents) matrix
+    # Normalize embeddings before calculating similarity for better results
+    embeddings_q = embeddings_q / np.linalg.norm(embeddings_q, axis=1, keepdims=True)
+    embeddings_d = embeddings_d / np.linalg.norm(embeddings_d, axis=1, keepdims=True)
+    
+    # Compute the relevance/similarity matrix
+    similarity_scores = embeddings_q @ embeddings_d.T
+
+    return calculate_map(similarity_scores, paper_ids)
+
+
+def calculate_map(similarity_scores, paper_ids):
     """
     Calculates the relevance scores and Mean Average Precision (MAP).
 
@@ -42,15 +55,6 @@ def calculate_map(embeddings_q, embeddings_d, paper_ids):
         paper_ids (list): List of IDs corresponding to the abstracts/citations.
     """
     print("Calculating relevance matrix...")
-    
-    # 1. Calculate similarity scores (dot product) between all queries and all documents
-    # The result is a (N_queries x N_documents) matrix
-    # Normalize embeddings before calculating similarity for better results
-    embeddings_q = embeddings_q / np.linalg.norm(embeddings_q, axis=1, keepdims=True)
-    embeddings_d = embeddings_d / np.linalg.norm(embeddings_d, axis=1, keepdims=True)
-    
-    # Compute the relevance/similarity matrix
-    similarity_scores = embeddings_q @ embeddings_d.T
     
     # 2. Create the true relevance matrix
     # This matrix tells us if Query_i is a positive match for Document_j.
@@ -112,7 +116,7 @@ def calculate_map(embeddings_q, embeddings_d, paper_ids):
 
 def main():
     # --- Configuration ---
-    BATCH_SIZE = 32
+    BATCH_SIZE = 256
     MODEL_PATH = "citation_retrieval_model.pth"
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -120,7 +124,7 @@ def main():
 
     # --- Data Loading ---
     print("Loading data...")
-    data_pairs, paper_ids = loadData()
+    data_pairs, paper_ids = loadData(subjects=["Machine learning"])
     
     # Use the full dataset for evaluation
     eval_dataset = TokenData(data_pairs, paper_ids)
@@ -132,7 +136,7 @@ def main():
     )
 
     # --- Model Setup ---
-    model = BERTWrapper().to(device)
+    model = Transformer(8, 256).to(device)
     try:
         model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
         print(f"Model weights loaded successfully from {MODEL_PATH}")
@@ -144,10 +148,18 @@ def main():
     abstract_embeddings, citation_embeddings = get_embeddings(model, eval_dataloader, device)
     
     # Calculate MAP using the generated embeddings and paper IDs
-    map_score = calculate_map(abstract_embeddings, citation_embeddings, paper_ids)
+    bert_map = map_from_embeddings(abstract_embeddings, citation_embeddings, paper_ids)
+
+    bim_ranking = BIM(data_pairs, paper_ids).rank()
+    bm25_ranking = BM25(data_pairs, paper_ids).rank()
+
+    bim_map = calculate_map(bim_ranking, paper_ids)
+    bm25_map = calculate_map(bm25_ranking, paper_ids)
     
     print(f"\nEvaluation Complete.")
-    print(f"Mean Average Precision (MAP) Score: {map_score:.4f}")
+    print(f"BERT Mean Average Precision (MAP) Score: {bert_map:.4f}")
+    print(f"BM25 Mean Average Precision (MAP) Score: {bm25_map:.4f}")
+    print(f"BIM  Mean Average Precision (MAP) Score: {bim_map:.4f}")
 
 
 if __name__ == "__main__":
