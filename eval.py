@@ -56,7 +56,7 @@ def calculate_map(similarity_scores, paper_ids):
     """
     print("Calculating relevance matrix...")
     
-    # 2. Create the true relevance matrix
+    # Create the true relevance matrix
     # This matrix tells us if Query_i is a positive match for Document_j.
     # A query is relevant to a document if they share the same source paper ID.
     ids_array = np.array(paper_ids)
