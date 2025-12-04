@@ -20,11 +20,11 @@ def get_embeddings(model: nn.Module, dataloader: DataLoader, device: torch.devic
 
     with torch.no_grad():
         for abstracts_tokens, citations_tokens in tqdm(dataloader, desc="Generating Embeddings"):
-            abstracts_tokens = {k: v.to(device) for k, v in abstracts_tokens.items()}
-            citations_tokens = {k: v.to(device) for k, v in citations_tokens.items()}
+            abstracts_tokens = {k: v.to(device) for k, v in abstracts_tokens.items()} 
+            citations_tokens = {k: v.to(device) for k, v in citations_tokens.items()} 
 
-            y1 = model(abstracts_tokens['input_ids']) # Abstract embeddings (Queries)
-            y2 = model(citations_tokens['input_ids']) # Citation embeddings (Documents)
+            y1 = model(abstracts_tokens) # Abstract embeddings (Queries)
+            y2 = model(citations_tokens) # Citation embeddings (Documents)
 
             all_abstract_embeddings.append(y1.cpu().numpy())
             all_citation_embeddings.append(y2.cpu().numpy())
@@ -33,7 +33,7 @@ def get_embeddings(model: nn.Module, dataloader: DataLoader, device: torch.devic
 
 
 def map_from_embeddings(embeddings_q, embeddings_d, paper_ids):
-    # 1. Calculate similarity scores (dot product) between all queries and all documents
+    # Calculate similarity scores (dot product) between all queries and all documents
     # The result is a (N_queries x N_documents) matrix
     # Normalize embeddings before calculating similarity for better results
     embeddings_q = embeddings_q / np.linalg.norm(embeddings_q, axis=1, keepdims=True)
@@ -62,7 +62,7 @@ def calculate_map(similarity_scores, paper_ids):
     ids_array = np.array(paper_ids)
     true_relevance = (ids_array[:, None] == ids_array[None, :]).astype(int)
     
-    # 3. Calculate MAP
+    # Calculate MAP
     # The MAP module will use the similarity scores as predictions and the true_relevance matrix as targets.
     # NOTE: The provided modules.py has a placeholder for MAP, so we assume a function for MAP calculation here.
     # Since MAP is typically a classification or ranking metric, let's implement a simplified MAP logic here.
@@ -119,14 +119,17 @@ def main():
     BATCH_SIZE = 256
     MODEL_PATH = "citation_retrieval_model.pth"
     
+    # Set to None for full evaluation
+    MAX_EVAL_SIZE = None
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
     # --- Data Loading ---
     print("Loading data...")
-    data_pairs, paper_ids = loadData(subjects=["Machine learning"])
+    data_pairs, paper_ids = loadData(max_data_size=MAX_EVAL_SIZE, subjects=["Machine learning"]) 
     
-    # Use the full dataset for evaluation
+    # Use the limited dataset for evaluation
     eval_dataset = TokenData(data_pairs, paper_ids)
     eval_dataloader = DataLoader(
         eval_dataset, 
