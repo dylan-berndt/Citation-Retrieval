@@ -1,3 +1,7 @@
+# Dylan Berndt and Faith Cordsiemon
+# This script evaluates each of the information retrieval models on the Citation Network Dataset
+
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -120,7 +124,7 @@ def main():
     MODEL_PATH = "citation_retrieval_model.pth"
     
     # Set to None for full evaluation
-    MAX_EVAL_SIZE = 3500
+    MAX_EVAL_SIZE = None
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")

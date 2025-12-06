@@ -1,3 +1,6 @@
+# Dylan Berndt and Faith Cordsiemon
+# This script evaluates each of the information retrieval models on the Citation Network Dataset
+
 from torch.utils.data import Dataset
 from typing import List, Tuple
 
