@@ -120,7 +120,7 @@ def main():
     MODEL_PATH = "citation_retrieval_model.pth"
     
     # Set to None for full evaluation
-    MAX_EVAL_SIZE = None
+    MAX_EVAL_SIZE = 3500
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
